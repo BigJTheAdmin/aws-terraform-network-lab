@@ -1,5 +1,6 @@
 resource "aws_ec2_transit_gateway" "main" {
   description = "Connects lab VPC A and VPC B"
+  auto_accept_shared_attachments = "enable"
   tags = {
     Name = "${var.name_prefix}-tgw"
   }
