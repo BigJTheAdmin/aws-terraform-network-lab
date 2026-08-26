@@ -54,6 +54,19 @@ for vpc_id in vpc_ids:
         "routes": routes_summary
     })
 
+    blackhole_routes = []
+    for vpc in inventory:
+        for route in vpc["routes"]:
+            if route["state"] == "blackhole":
+                blackhole_routes.append({"vpc_id": vpc["vpc_id"], **route})
+
+    if blackhole_routes:
+        print("\n⚠ BLACKHOLE ROUTES FOUND:")
+        for br in blackhole_routes:
+            print(f"  VPC {br['vpc_id']} | {br['route_table_id']} | {br['destination']} -> {br['target']}")
+    else:
+        print("\nNo blackhole routes found — all routes active.")
+
 print(json.dumps(inventory, indent=2))
 
 with open("network_inventory.json", "w") as f:
