@@ -9,7 +9,7 @@ resource "aws_ec2_transit_gateway" "main" {
 resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_a" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   vpc_id              = aws_vpc.this["vpc_a"].id
-  subnet_ids          = [aws_subnet.private.id]
+  subnet_ids          = [aws_subnet.private.id, aws_subnet.private_2.id]
   tags = {
     Name = "${local.vpc_names["vpc_a"]}-tgw-attach"
   }
@@ -18,7 +18,7 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_a" {
 resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_b" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   vpc_id              = aws_vpc.this["vpc_b"].id
-  subnet_ids          = [aws_subnet.private_b.id]
+  subnet_ids          = [aws_subnet.private_b.id, aws_subnet.private_b_2.id]
   tags = {
     Name = "${local.vpc_names["vpc_b"]}-tgw-attach"
   }
