@@ -42,3 +42,33 @@ variable "vpcs" {
     vpc_b = "10.1.0.0/16"
   }
 }
+
+variable "availability_zone_2" {
+  description = "Second AZ for subnet redundancy"
+  type        = string
+  default     = "us-east-1b"
+}
+
+variable "public_subnet_cidr_2" {
+  description = "CIDR block for VPC A's second public subnet (AZ2)"
+  type        = string
+  default     = "10.0.3.0/24"
+}
+
+variable "private_subnet_cidr_2" {
+  description = "CIDR block for VPC A's second private subnet (AZ2)"
+  type        = string
+  default     = "10.0.4.0/24"
+}
+
+variable "public_subnet_cidr_b_2" {
+  description = "CIDR block for VPC B's second public subnet (AZ2)"
+  type        = string
+  default     = "10.1.3.0/24"
+}
+
+variable "private_subnet_cidr_b_2" {
+  description = "CIDR block for VPC B's second private subnet (AZ2)"
+  type        = string
+  default     = "10.1.4.0/24"
+}

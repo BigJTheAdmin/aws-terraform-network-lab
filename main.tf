@@ -1,22 +1,3 @@
-terraform {
-  cloud {
-    organization = "PingTraceSSH"
-    workspaces {
-      name = "aws-terraform-network-lab"
-    }
-  }
-  required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 5.0"
-    }
-  }
-}
-
-provider "aws" {
-  region = "us-east-1"
-}
-
 locals {
   vpc_names = {
     vpc_a = "${var.name_prefix}-a"
@@ -141,5 +122,63 @@ resource "aws_route_table" "private_b" {
 
 resource "aws_route_table_association" "private_b" {
   subnet_id      = aws_subnet.private_b.id
+  route_table_id = aws_route_table.private_b.id
+}
+
+resource "aws_subnet" "public_2" {
+  vpc_id                  = aws_vpc.this["vpc_a"].id
+  cidr_block              = var.public_subnet_cidr_2
+  availability_zone       = var.availability_zone_2
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "${local.vpc_names["vpc_a"]}-public-subnet-2"
+  }
+}
+
+resource "aws_subnet" "private_2" {
+  vpc_id            = aws_vpc.this["vpc_a"].id
+  cidr_block        = var.private_subnet_cidr_2
+  availability_zone = var.availability_zone_2
+  tags = {
+    Name = "${local.vpc_names["vpc_a"]}-private-subnet-2"
+  }
+}
+
+resource "aws_route_table_association" "public_2" {
+  subnet_id      = aws_subnet.public_2.id
+  route_table_id = aws_route_table.public.id
+}
+
+resource "aws_route_table_association" "private_2" {
+  subnet_id      = aws_subnet.private_2.id
+  route_table_id = aws_route_table.private.id
+}
+
+resource "aws_subnet" "public_b_2" {
+  vpc_id                  = aws_vpc.this["vpc_b"].id
+  cidr_block              = var.public_subnet_cidr_b_2
+  availability_zone       = var.availability_zone_2
+  map_public_ip_on_launch = true
+  tags = {
+    Name = "${local.vpc_names["vpc_b"]}-public-subnet-2"
+  }
+}
+
+resource "aws_subnet" "private_b_2" {
+  vpc_id            = aws_vpc.this["vpc_b"].id
+  cidr_block        = var.private_subnet_cidr_b_2
+  availability_zone = var.availability_zone_2
+  tags = {
+    Name = "${local.vpc_names["vpc_b"]}-private-subnet-2"
+  }
+}
+
+resource "aws_route_table_association" "public_b_2" {
+  subnet_id      = aws_subnet.public_b_2.id
+  route_table_id = aws_route_table.public_b.id
+}
+
+resource "aws_route_table_association" "private_b_2" {
+  subnet_id      = aws_subnet.private_b_2.id
   route_table_id = aws_route_table.private_b.id
 }
