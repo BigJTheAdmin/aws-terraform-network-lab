@@ -42,6 +42,25 @@ Transit Gateway trades that away for a hub-and-spoke model: each VPC attaches on
 - Infrastructure fully defined in Terraform, applied through HCP Terraform's VCS-driven workflow — every change is a GitHub commit, every run is reviewable before apply
 - `network_inventory.py` — a boto3 script that independently queries live AWS state (VPCs, subnets, route tables), exports it to JSON, and flags any route in a `blackhole` state
 
+## Deployment flow
+
+1. Edit `.tf` files directly on GitHub (or via a feature branch + PR for reviewed changes)
+2. A commit to `main` triggers an automatic plan run in HCP Terraform — no local Terraform CLI required
+3. Review the plan output in the HCP Terraform UI (resource counts, any unexpected `-/+` replacements)
+4. Confirm & apply — HCP Terraform provisions against AWS using workspace-scoped credentials
+5. Verify independently with `automation/network_inventory.py`, which queries AWS directly and cross-checks against what the code declares
+
+## Cleanup
+
+To tear down everything this project manages:
+
+1. HCP Terraform workspace → **Settings → Destruction and Deletion → Queue destroy plan**
+2. Review the destroy plan (resource count should match what's currently in state)
+3. Confirm & apply
+4. Re-run `automation/network_inventory.py` — it should return an empty VPC list, confirming a clean teardown
+
+Note: Transit Gateway and its VPC attachments can take several minutes to fully delete due to AWS-side ENI detachment — this is expected, not a stuck run.
+
 ## Repo structure
 
 | File | Purpose |
