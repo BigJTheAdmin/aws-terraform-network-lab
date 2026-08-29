@@ -65,11 +65,13 @@ Note: Transit Gateway and its VPC attachments can take several minutes to fully 
 
 | File | Purpose |
 |---|---|
+| `versions.tf` | Terraform version + HCP Terraform backend config |
+| `providers.tf` | AWS provider configuration |
 | `main.tf` | VPCs, subnets, IGWs, route tables |
 | `transit_gateway.tf` | Transit Gateway, attachments, cross-VPC routes |
 | `variables.tf` | CIDR blocks, naming, AZ inputs |
 | `outputs.tf` | Resource IDs for verification and future use |
-| `network_inventory.py` | Independent AWS state inventory + blackhole route detection |
+| `automation/network_inventory.py` | Independent AWS state inventory, JSON/CSV export, blackhole route detection |
 
 ## Notes from building this
 
