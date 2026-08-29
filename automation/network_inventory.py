@@ -1,5 +1,6 @@
 import boto3
 import json
+import csv
 
 ec2 = boto3.client("ec2", region_name="us-east-1")
 
@@ -60,6 +61,17 @@ with open("network_inventory.json", "w") as f:
     json.dump(inventory, f, indent=2)
 
 print("\nSaved to network_inventory.json")
+
+with open("network_inventory.csv", "w", newline="") as f:
+    writer = csv.writer(f)
+    writer.writerow(["vpc_id", "subnet_id", "cidr", "route_table_id", "destination", "target", "state"])
+    for vpc in inventory:
+        for subnet in vpc["subnets"]:
+            writer.writerow([vpc["vpc_id"], subnet["subnet_id"], subnet["cidr"], "", "", "", ""])
+        for route in vpc["routes"]:
+            writer.writerow([vpc["vpc_id"], "", "", route["route_table_id"], route["destination"], route["target"], route["state"]])
+
+print("Saved to network_inventory.csv")
 
 blackhole_routes = []
 for vpc in inventory:
