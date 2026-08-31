@@ -6,7 +6,7 @@ resource "aws_vpc" "this" {
 }
 
 resource "aws_subnet" "public" {
-  for_each = { for idx, s in var.public_subnets : idx => s }
+  for_each = { for idx, s in var.public_subnets : tostring(idx) => s }
 
   vpc_id                  = aws_vpc.this.id
   cidr_block              = each.value.cidr
@@ -18,7 +18,7 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
-  for_each = { for idx, s in var.private_subnets : idx => s }
+  for_each = { for idx, s in var.private_subnets : tostring(idx) => s }
 
   vpc_id            = aws_vpc.this.id
   cidr_block        = each.value.cidr
