@@ -33,3 +33,7 @@ output "tgw_attachment_a_id" {
 output "tgw_attachment_b_id" {
   value = aws_ec2_transit_gateway_vpc_attachment.vpc_b.id
 }
+
+output "tgw_route_table_id" {
+  value = aws_ec2_transit_gateway_route_table.main.id
+}
