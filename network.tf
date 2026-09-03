@@ -36,3 +36,15 @@ module "vpc_b" {
     { cidr = var.private_subnet_cidr_b_2, az = var.availability_zone_2 },
   ]
 }
+
+module "vpc_inspection" {
+  source = "./modules/vpc"
+  name   = "${var.name_prefix}-inspection"
+  cidr   = var.inspection_vpc_cidr
+
+  public_subnets  = []
+  private_subnets = [
+    { cidr = var.inspection_subnet_cidr,   az = var.availability_zone },
+    { cidr = var.inspection_subnet_cidr_2, az = var.availability_zone_2 },
+  ]
+}

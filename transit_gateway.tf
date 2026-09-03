@@ -67,10 +67,44 @@ resource "aws_ec2_transit_gateway_route_table_association" "vpc_b" {
 
 resource "aws_ec2_transit_gateway_route_table_propagation" "vpc_a" {
   transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.vpc_a.id
-  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.main.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.inspection.id
 }
 
 resource "aws_ec2_transit_gateway_route_table_propagation" "vpc_b" {
   transit_gateway_attachment_id = aws_ec2_transit_gateway_vpc_attachment.vpc_b.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.inspection.id
+}
+
+resource "aws_ec2_transit_gateway_route_table_propagation" "inspection" {
+  transit_gateway_attachment_id   = aws_ec2_transit_gateway_vpc_attachment.inspection.id
   transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.main.id
+}
+
+resource "aws_ec2_transit_gateway_vpc_attachment" "inspection" {
+  transit_gateway_id = aws_ec2_transit_gateway.main.id
+  vpc_id              = module.vpc_inspection.vpc_id
+  subnet_ids          = module.vpc_inspection.private_subnet_ids
+  tags = { Name = "${var.name_prefix}-inspection-tgw-attach" }
+}
+
+resource "aws_ec2_transit_gateway_route_table" "inspection" {
+  transit_gateway_id = aws_ec2_transit_gateway.main.id
+  tags = { Name = "${var.name_prefix}-tgw-inspection-rt" }
+}
+
+resource "aws_ec2_transit_gateway_route_table_association" "inspection" {
+  transit_gateway_attachment_id   = aws_ec2_transit_gateway_vpc_attachment.inspection.id
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.inspection.id
+}
+
+resource "aws_ec2_transit_gateway_route" "a_via_inspection" {
+  destination_cidr_block         = var.vpcs["vpc_b"]
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.main.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.inspection.id
+}
+
+resource "aws_ec2_transit_gateway_route" "b_via_inspection" {
+  destination_cidr_block         = var.vpcs["vpc_a"]
+  transit_gateway_route_table_id = aws_ec2_transit_gateway_route_table.main.id
+  transit_gateway_attachment_id  = aws_ec2_transit_gateway_vpc_attachment.inspection.id
 }
