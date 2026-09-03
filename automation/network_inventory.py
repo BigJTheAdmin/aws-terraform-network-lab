@@ -190,3 +190,7 @@ if open_sgs:
         print(f"  {sg['group_id']} ({sg['group_name']}) - port {sg['port']} open to 0.0.0.0/0")
 else:
     print("\nNo open security group rules found.")
+
+print(f"DEBUG spoke_rt_id: {spoke_rt_id}")
+print(f"DEBUG inspection_vpc_id: {inspection_vpc_id}")
+print(f"DEBUG inspection_attachment_id: {inspection_attachment_id}")
