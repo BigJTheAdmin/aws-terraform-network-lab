@@ -42,6 +42,31 @@ def get_tgw_route_table_propagations(route_table_id):
         print(f"Error: {e}")
         return set()
 
+def list_tgw_attachments():
+    try:
+        response = ec2.describe_transit_gateway_attachments()
+        return [
+            {
+                "attachment_id": a["TransitGatewayAttachmentId"],
+                "resource_id": a["ResourceId"],
+                "state": a["State"]
+            }
+            for a in response["TransitGatewayAttachments"]
+        ]
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
+
+def get_tgw_route_table_associations(route_table_id):
+    try:
+        response = ec2.get_transit_gateway_route_table_associations(
+            TransitGatewayRouteTableId=route_table_id
+        )
+        return {a["TransitGatewayAttachmentId"] for a in response["Associations"]}
+    except Exception as e:
+        print(f"Error: {e}")
+        return set()
+
 def check_tgw_propagation_gaps(route_table_id):
     associated = get_tgw_route_table_associations(route_table_id)
     propagating = get_tgw_route_table_propagations(route_table_id)
@@ -102,7 +127,7 @@ if blackhole_routes:
 else:
     print("\nNo blackhole routes found — all routes active.")
 
-tgw_route_table_id = "tgw-rtb-00fb7dad63ca9abad"  # from your outputs
+tgw_route_table_id = "tgw-rtb-0a28217794d121d49"  # from your outputs
 
 tgw_attachments = list_tgw_attachments()
 print("\nTGW Attachments:")
