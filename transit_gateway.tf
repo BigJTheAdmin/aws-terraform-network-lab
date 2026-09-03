@@ -51,7 +51,7 @@ resource "aws_route" "b_to_a" {
 resource "aws_ec2_transit_gateway_route_table" "main" {
   transit_gateway_id = aws_ec2_transit_gateway.main.id
   tags = {
-    Name = "${var.name_prefix}-tgw-rt"
+    Name = "${var.name_prefix}-tgw-spoke-rt"
   }
 }
 
