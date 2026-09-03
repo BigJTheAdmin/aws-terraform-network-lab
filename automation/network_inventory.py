@@ -143,20 +143,14 @@ else:
 
 tgw_route_table_id = get_tgw_route_table_id()
 
+tgw_attachments = list_tgw_attachments()
+print("\nTGW Attachments:")
+for att in tgw_attachments:
+    print(f"  {att['attachment_id']} -> {att['resource_id']} [{att['state']}]")
+
 if tgw_route_table_id:
     gaps = check_tgw_propagation_gaps(tgw_route_table_id)
     if gaps:
         print(f"\n⚠ TGW ROUTE TABLE GAP: attachments associated but not propagating: {gaps}")
     else:
         print("\nTGW route table OK: every associated attachment is propagating.")
-        
-tgw_attachments = list_tgw_attachments()
-print("\nTGW Attachments:")
-for att in tgw_attachments:
-    print(f"  {att['attachment_id']} -> {att['resource_id']} [{att['state']}]")
-
-gaps = check_tgw_propagation_gaps(tgw_route_table_id)
-if gaps:
-    print(f"\n⚠ TGW ROUTE TABLE GAP: attachments associated but not propagating: {gaps}")
-else:
-    print("\nTGW route table OK: every associated attachment is propagating.")
