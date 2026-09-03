@@ -49,6 +49,16 @@ Transit Gateway trades that away for a hub-and-spoke model: each VPC attaches on
 
 By default, every TGW attachment auto-associates and auto-propagates into AWS's built-in default route table. That works, but it's implicit — you can't selectively control which attachments can reach which others without managing route tables directly. This project disables default association/propagation and manages a route table explicitly, with separate `aws_ec2_transit_gateway_route_table_association` and `aws_ec2_transit_gateway_route_table_propagation` resources per attachment. Association controls which table an attachment's traffic is evaluated against (one at a time); propagation controls whether that attachment's routes are advertised into a table (many at a time) — managing both explicitly is what makes future traffic segmentation (e.g., isolating an untrusted VPC) possible without restructuring.
 
+## Milestone 2: Centralized network inspection
+
+Extended the design so VPC A and VPC B can no longer reach each other directly — all inter-VPC traffic is forced through a dedicated inspection VPC.
+
+**Mechanism:** two separate TGW route tables instead of one shared table. Each spoke attachment *associates* with the Spoke table but *propagates* into the Inspection table; the inspection attachment does the reverse. Two static routes in the Spoke table (`10.0.0.0/16` and `10.1.0.0/16`, both targeting the inspection attachment) override what propagation alone would produce — that override is the actual redirect mechanism.
+
+**Scope decision:** this build proves the routing pattern, not a deployed firewall appliance. In production, AWS Network Firewall or a Palo Alto VM-Series instance would sit in the inspection VPC's subnets. Skipped here deliberately — the routing logic is the hard, differentiating part; the appliance itself is a managed-service checkbox.
+
+**Verified independently** via `automation/network_inventory.py`: `verify_inspection_redirect()` confirms both spoke CIDRs route through the inspection attachment by reading live TGW route entries, not by trusting the Terraform plan.
+
 ## What's built
 
 - 2 VPCs, each built from a shared `modules/vpc` Terraform module, with public + private subnets across 2 Availability Zones, an Internet Gateway, and dedicated route tables (not the default main table)
@@ -117,7 +127,7 @@ Note: Transit Gateway and its attachments can take several minutes to fully dele
 ## What I would change for production
 
 - **Multi-account design** — this lab runs everything in one AWS account. In production, workload VPCs would live in separate accounts (via AWS Organizations), with the Transit Gateway centralized in a shared networking account and attachments shared across accounts via AWS RAM.
-- **Centralized inspection** — traffic currently flows VPC-to-VPC directly through the TGW. A production design would route inter-VPC traffic through a dedicated inspection VPC with a firewall appliance (e.g., AWS Network Firewall or a Palo Alto VM-Series instance) for centralized policy enforcement and logging.
+- **Inspection appliance** — this build proves the routing pattern only. Production would deploy AWS Network Firewall or a Palo Alto VM-Series NVA in the inspection VPC's subnets, with the routing already correctly forcing traffic to it.
 - **High availability** — subnets are already spread across 2 AZs, but there's no multi-region redundancy. A production design serving multiple regions would need inter-region TGW peering or a global network layer.
 - **Logging** — VPC Flow Logs and Transit Gateway Flow Logs are not currently enabled. Production would ship both to CloudWatch Logs or S3 for traffic visibility and incident investigation.
 - **Permissions** — the IAM policy used here grants broad EC2 networking actions with `Resource: "*"`, which is largely unavoidable since most EC2 networking actions don't support resource-level ARN restrictions. A production setup would still separate read-only/audit roles from write/apply roles, and scope the apply role to only the CI/CD system, not an individual engineer's local credentials.
