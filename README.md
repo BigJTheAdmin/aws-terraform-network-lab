@@ -1,23 +1,24 @@
 # AWS Network Lab — Terraform + HCP Terraform
 
-Two-VPC network built with Terraform, provisioned through HCP Terraform's VCS-driven workflow (GitHub-triggered plan/apply, no local Terraform CLI required). Includes a Python/boto3 script that independently inventories the live AWS environment and cross-checks it against what the code declares.
+Two-VPC network built with Terraform, provisioned through HCP Terraform's VCS-driven workflow (GitHub-triggered plan/apply, no local Terraform CLI required). Includes a Python/boto3 script that independently inventories the live AWS environment, cross-checks it against what the code declares, and verifies Transit Gateway routing integrity.
 
 ## Architecture
 
 ```mermaid
 graph TB
-    subgraph VPCA["VPC A — 10.0.0.0/16"]
-        A_pub["Public Subnet<br/>10.0.1.0/24"]
-        A_priv["Private Subnet<br/>10.0.2.0/24"]
+    subgraph VPCA["VPC A — 10.0.0.0/16 (via module)"]
+        A_pub["Public subnets x2 AZs"]
+        A_priv["Private subnets x2 AZs"]
     end
 
-    subgraph VPCB["VPC B — 10.1.0.0/16"]
-        B_pub["Public Subnet<br/>10.1.1.0/24"]
-        B_priv["Private Subnet<br/>10.1.2.0/24"]
+    subgraph VPCB["VPC B — 10.1.0.0/16 (via module)"]
+        B_pub["Public subnets x2 AZs"]
+        B_priv["Private subnets x2 AZs"]
     end
 
     IGW_A["Internet Gateway A"]
     IGW_B["Internet Gateway B"]
+    TGWRT["TGW route table (explicit)"]
     TGW["Transit Gateway"]
     Internet(["Internet"])
 
@@ -25,9 +26,10 @@ graph TB
     B_pub --> IGW_B --> Internet
     A_priv --> TGW
     B_priv --> TGW
+    TGW --> TGWRT
 ```
 
-Each VPC has a public subnet (routed to the internet via its own Internet Gateway) and a private subnet (routed to the *other* VPC via a shared Transit Gateway — no direct internet path).
+Each VPC is built from a single reusable `modules/vpc` module (name/CIDR/subnet inputs), spans two Availability Zones for redundancy, and has a public subnet (routed to the internet via its own IGW) and a private subnet (routed to the *other* VPC via a shared Transit Gateway).
 
 ## Why Transit Gateway instead of VPC Peering
 
@@ -35,31 +37,59 @@ Two VPCs alone could connect with plain VPC Peering — direct, cheaper, no extr
 
 Transit Gateway trades that away for a hub-and-spoke model: each VPC attaches once, and the TGW routes between everyone. Adding a third VPC later means one new attachment, not a fresh mesh. For 2 VPCs, TGW is genuinely more setup than the problem requires — the choice here was made deliberately to practice the pattern that scales, not because 2 VPCs needed it.
 
+## Why an explicit TGW route table instead of the default
+
+By default, every TGW attachment auto-associates and auto-propagates into AWS's built-in default route table. That works, but it's implicit — you can't selectively control which attachments can reach which others without managing route tables directly. This project disables default association/propagation and manages a route table explicitly, with separate `aws_ec2_transit_gateway_route_table_association` and `aws_ec2_transit_gateway_route_table_propagation` resources per attachment. Association controls which table an attachment's traffic is evaluated against (one at a time); propagation controls whether that attachment's routes are advertised into a table (many at a time) — managing both explicitly is what makes future traffic segmentation (e.g., isolating an untrusted VPC) possible without restructuring.
+
 ## What's built
 
-- 2 VPCs, each with a public + private subnet, an Internet Gateway, and dedicated route tables (not the default main table)
-- 1 Transit Gateway with VPC attachments in each VPC's private subnet, plus explicit cross-VPC routes
-- Infrastructure fully defined in Terraform, applied through HCP Terraform's VCS-driven workflow — every change is a GitHub commit, every run is reviewable before apply
-- `network_inventory.py` — a boto3 script that independently queries live AWS state (VPCs, subnets, route tables), exports it to JSON, and flags any route in a `blackhole` state
+- 2 VPCs, each built from a shared `modules/vpc` Terraform module, with public + private subnets across 2 Availability Zones, an Internet Gateway, and dedicated route tables (not the default main table)
+- 1 Transit Gateway with redundant multi-AZ VPC attachments, plus an explicit TGW route table with per-attachment association and propagation
+- Infrastructure fully defined in Terraform, applied through HCP Terraform's VCS-driven workflow — every change is a GitHub commit reviewed via pull request before merge
+- `automation/network_inventory.py` — a boto3 script that independently queries live AWS state (VPCs, subnets, route tables, TGW attachments), exports to JSON/CSV, flags blackhole routes, and flags any TGW attachment that's associated but not propagating
 
 ## Deployment flow
 
-1. Edit `.tf` files directly on GitHub (or via a feature branch + PR for reviewed changes)
-2. A commit to `main` triggers an automatic plan run in HCP Terraform — no local Terraform CLI required
-3. Review the plan output in the HCP Terraform UI (resource counts, any unexpected `-/+` replacements)
-4. Confirm & apply — HCP Terraform provisions against AWS using workspace-scoped credentials
-5. Verify independently with `automation/network_inventory.py`, which queries AWS directly and cross-checks against what the code declares
+1. Edit `.tf` files via a feature branch and pull request
+2. HCP Terraform's speculative plan runs automatically on the PR, showing the diff before merge
+3. Review the plan (resource counts, any unexpected `-/+` replacements)
+4. Merge the PR — this triggers the real run against `main`
+5. Manually confirm & apply in HCP Terraform (auto-apply is intentionally off)
+6. Verify independently with `automation/network_inventory.py`
+
+## Verification steps
+
+- AWS Console → VPC → confirm 2 VPCs, 4 subnets each across 2 AZs
+- AWS Console → Transit Gateway Route Tables → confirm both attachments associated, both CIDRs propagated, both routes present
+- Run `automation/network_inventory.py` — confirm no blackhole routes and no propagation gaps reported
 
 ## Cleanup
 
-To tear down everything this project manages:
-
 1. HCP Terraform workspace → **Settings → Destruction and Deletion → Queue destroy plan**
-2. Review the destroy plan (resource count should match what's currently in state)
+2. Review the destroy plan (resource count should match current state)
 3. Confirm & apply
-4. Re-run `automation/network_inventory.py` — it should return an empty VPC list, confirming a clean teardown
+4. Re-run `automation/network_inventory.py` — should return an empty VPC list
 
-Note: Transit Gateway and its VPC attachments can take several minutes to fully delete due to AWS-side ENI detachment — this is expected, not a stuck run.
+Note: Transit Gateway and its attachments can take several minutes to fully delete due to AWS-side ENI detachment — this is expected, not a stuck run.
+
+## Failure scenarios tested
+
+**Scenario: silent propagation gap.** Removed the `aws_ec2_transit_gateway_route_table_propagation` resource for one VPC's attachment while leaving its association intact — a realistic mistake, since association and propagation are separate controls and dropping one doesn't error loudly.
+
+**Effect:** the affected VPC's private route table lost its route to the other VPC's CIDR (visible in the TGW route table's Routes tab — one entry instead of two), while the *other* VPC still appeared to have a working route to it. An asymmetric, partial failure — not a clean total outage — which is exactly the kind of gap that's easy to miss without checking the right layer.
+
+**Diagnosis:** confirmed via the AWS Console (TGW Route Tables → Routes tab showing only one CIDR) and via `automation/network_inventory.py`'s new `check_tgw_propagation_gaps()` check, which compares associated attachments against propagating attachments and flags the difference. Notably, the *original* version of the script (VPC-side route inspection only) had no visibility into this at all — it reported everything as healthy, because the break happened at a layer the script didn't inspect yet. That gap is what motivated adding the TGW-side checks.
+
+**Fix:** restored the propagation resource, applied, and confirmed both the console Routes tab and the script's automated check reported the route and the propagation as present again.
+
+## What I would change for production
+
+- **Multi-account design** — this lab runs everything in one AWS account. In production, workload VPCs would live in separate accounts (via AWS Organizations), with the Transit Gateway centralized in a shared networking account and attachments shared across accounts via AWS RAM.
+- **Centralized inspection** — traffic currently flows VPC-to-VPC directly through the TGW. A production design would route inter-VPC traffic through a dedicated inspection VPC with a firewall appliance (e.g., AWS Network Firewall or a Palo Alto VM-Series instance) for centralized policy enforcement and logging.
+- **High availability** — subnets are already spread across 2 AZs, but there's no multi-region redundancy. A production design serving multiple regions would need inter-region TGW peering or a global network layer.
+- **Logging** — VPC Flow Logs and Transit Gateway Flow Logs are not currently enabled. Production would ship both to CloudWatch Logs or S3 for traffic visibility and incident investigation.
+- **Permissions** — the IAM policy used here grants broad EC2 networking actions with `Resource: "*"`, which is largely unavoidable since most EC2 networking actions don't support resource-level ARN restrictions. A production setup would still separate read-only/audit roles from write/apply roles, and scope the apply role to only the CI/CD system, not an individual engineer's local credentials.
+- **CI/CD approval controls** — applies here are confirmed manually by one person in the HCP Terraform UI. Production would require mandatory PR review from a second engineer, and likely a policy-as-code gate (Sentinel or OPA) checking things like "no `0.0.0.0/0` ingress" before any apply is allowed to proceed.
 
 ## Repo structure
 
@@ -67,14 +97,18 @@ Note: Transit Gateway and its VPC attachments can take several minutes to fully 
 |---|---|
 | `versions.tf` | Terraform version + HCP Terraform backend config |
 | `providers.tf` | AWS provider configuration |
-| `main.tf` | VPCs, subnets, IGWs, route tables |
-| `transit_gateway.tf` | Transit Gateway, attachments, cross-VPC routes |
-| `variables.tf` | CIDR blocks, naming, AZ inputs |
-| `outputs.tf` | Resource IDs for verification and future use |
-| `automation/network_inventory.py` | Independent AWS state inventory, JSON/CSV export, blackhole route detection |
+| `network.tf` | Root-level module calls for VPC A and VPC B |
+| `modules/vpc/main.tf` | Reusable VPC module — VPC, subnets, IGW, route tables |
+| `modules/vpc/variables.tf` | Module inputs — name, CIDR, subnet lists |
+| `modules/vpc/outputs.tf` | Module outputs — VPC ID, subnet IDs, route table IDs |
+| `transit_gateway.tf` | Transit Gateway, attachments, explicit route table, association/propagation, cross-VPC routes |
+| `variables.tf` | Root-level CIDR blocks, naming, AZ inputs |
+| `outputs.tf` | Resource IDs for verification and downstream use |
+| `automation/network_inventory.py` | Independent AWS state inventory, JSON/CSV export, blackhole + propagation-gap detection |
 
 ## Notes from building this
 
-- Terraform's dependency graph is inferred from references (`aws_vpc.main.id`), not declared manually — but `depends_on` is still needed when a dependency isn't visible through a direct attribute reference (the TGW routes depend on both attachments existing, but only reference the TGW itself).
-- Renaming a resource in code (e.g. `aws_vpc.main` → `aws_vpc.this["vpc_a"]` during a refactor to `for_each`) is treated by Terraform as delete-and-recreate, not a rename — worth planning around before running it against anything with real dependents.
-- Least-privilege IAM scoping surfaced real friction: EC2 networking actions needed granting incrementally, a first-ever Transit Gateway attachment in the account required a one-time `iam:CreateServiceLinkedRole` permission that isn't obvious from the EC2-side error message, and IAM's inline-policy size limit (2,048 characters, shared across all inline policies on one user) forced a move to a standalone customer-managed policy (6,144-character limit) instead.
+- Terraform's dependency graph is inferred from references (`aws_vpc.this.id`), not declared manually — but `depends_on` is still needed when a dependency isn't visible through a direct attribute reference (the TGW routes depend on both attachments existing, but only reference the TGW itself).
+- Moving resources into a module changes their address (`aws_vpc.this["vpc_a"]` → `module.vpc_a.aws_vpc.this`), which Terraform treats as delete-and-recreate, not an in-place refactor — a full destroy/rebuild is expected the first time resources move into a module.
+- `default_route_table_association = "disable"` on the TGW only affects attachments created *after* the change — pre-existing attachments stay associated with the old default table until manually disassociated, since Terraform never tracked that original auto-association in the first place.
+- Least-privilege IAM scoping surfaced real friction: EC2 networking actions needed granting incrementally, a first-ever Transit Gateway attachment in the account required a one-time `iam:CreateServiceLinkedRole` permission, and IAM's inline-policy size limit forced a move to a standalone customer-managed policy.
