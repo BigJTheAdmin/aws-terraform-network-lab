@@ -27,9 +27,11 @@ variable "private_subnets" {
 variable "inspection_vpc_cidr" {
   default = "10.2.0.0/16"
 }
+
 variable "inspection_subnet_cidr" {
   default = "10.2.1.0/24"
 }
+
 variable "inspection_subnet_cidr_2" {
   default = "10.2.2.0/24"
 }
