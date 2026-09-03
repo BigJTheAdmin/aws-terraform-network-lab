@@ -11,7 +11,7 @@ def list_vpc_ids():
     except Exception as e:
         print(f"Error: {e}")
         return []
-    
+
 def list_subnets_for_vpc(vpc_id):
     try:
         response = ec2.describe_subnets(
@@ -21,7 +21,7 @@ def list_subnets_for_vpc(vpc_id):
     except Exception as e:
         print(f"Error: {e}")
         return []
-    
+
 def list_route_tables_for_vpc(vpc_id):
     try:
         response = ec2.describe_route_tables(
@@ -32,29 +32,65 @@ def list_route_tables_for_vpc(vpc_id):
         print(f"Error: {e}")
         return []
 
-def get_tgw_route_table_id():
+def get_vpc_id_by_tag(tag_name):
     try:
-        response = ec2.describe_transit_gateway_route_tables(
-            Filters=[{"Name": "tag:Name", "Values": ["lab-tgw-rt"]}]
-        )
-        tables = response["TransitGatewayRouteTables"]
-        if not tables:
-            print("Error: no TGW route table found with tag Name=lab-tgw-rt")
-            return None
-        return tables[0]["TransitGatewayRouteTableId"]
+        response = ec2.describe_vpcs(Filters=[{"Name": "tag:Name", "Values": [tag_name]}])
+        vpcs = response["Vpcs"]
+        return vpcs[0]["VpcId"] if vpcs else None
     except Exception as e:
         print(f"Error: {e}")
         return None
 
-def get_tgw_route_table_propagations(route_table_id):
+def get_tgw_route_table_id_by_tag(tag_name):
     try:
-        response = ec2.get_transit_gateway_route_table_propagations(
-            TransitGatewayRouteTableId=route_table_id
+        response = ec2.describe_transit_gateway_route_tables(
+            Filters=[{"Name": "tag:Name", "Values": [tag_name]}]
         )
-        return {p["TransitGatewayAttachmentId"] for p in response["TransitGatewayRouteTablePropagations"]}
+        tables = response["TransitGatewayRouteTables"]
+        return tables[0]["TransitGatewayRouteTableId"] if tables else None
     except Exception as e:
         print(f"Error: {e}")
-        return set()
+        return None
+
+def get_tgw_routes(route_table_id):
+    try:
+        response = ec2.search_transit_gateway_routes(
+            TransitGatewayRouteTableId=route_table_id,
+            Filters=[{"Name": "state", "Values": ["active"]}]
+        )
+        return response["Routes"]
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
+
+def verify_inspection_redirect(spoke_rt_id, inspection_attachment_id):
+    routes = get_tgw_routes(spoke_rt_id)
+    findings = []
+    for r in routes:
+        dest = r.get("DestinationCidrBlock")
+        target = r.get("TransitGatewayAttachments", [{}])[0].get("TransitGatewayAttachmentId")
+        if dest in ("10.0.0.0/16", "10.1.0.0/16") and target != inspection_attachment_id:
+            findings.append(f"{dest} does NOT route via inspection (routes to {target})")
+    return findings
+
+def find_open_security_groups():
+    try:
+        response = ec2.describe_security_groups()
+        findings = []
+        for sg in response["SecurityGroups"]:
+            for rule in sg["IpPermissions"]:
+                for ip_range in rule.get("IpRanges", []):
+                    if ip_range.get("CidrIp") == "0.0.0.0/0":
+                        port = rule.get("FromPort", "all")
+                        findings.append({
+                            "group_id": sg["GroupId"],
+                            "group_name": sg["GroupName"],
+                            "port": port
+                        })
+        return findings
+    except Exception as e:
+        print(f"Error: {e}")
+        return []
 
 def list_tgw_attachments():
     try:
@@ -70,22 +106,6 @@ def list_tgw_attachments():
     except Exception as e:
         print(f"Error: {e}")
         return []
-
-def get_tgw_route_table_associations(route_table_id):
-    try:
-        response = ec2.get_transit_gateway_route_table_associations(
-            TransitGatewayRouteTableId=route_table_id
-        )
-        return {a["TransitGatewayAttachmentId"] for a in response["Associations"]}
-    except Exception as e:
-        print(f"Error: {e}")
-        return set()
-
-def check_tgw_propagation_gaps(route_table_id):
-    associated = get_tgw_route_table_associations(route_table_id)
-    propagating = get_tgw_route_table_propagations(route_table_id)
-    missing = associated - propagating
-    return missing
 
 inventory = []
 
@@ -141,16 +161,32 @@ if blackhole_routes:
 else:
     print("\nNo blackhole routes found — all routes active.")
 
-tgw_route_table_id = get_tgw_route_table_id()
-
 tgw_attachments = list_tgw_attachments()
 print("\nTGW Attachments:")
 for att in tgw_attachments:
     print(f"  {att['attachment_id']} -> {att['resource_id']} [{att['state']}]")
 
-if tgw_route_table_id:
-    gaps = check_tgw_propagation_gaps(tgw_route_table_id)
-    if gaps:
-        print(f"\n⚠ TGW ROUTE TABLE GAP: attachments associated but not propagating: {gaps}")
+spoke_rt_id = get_tgw_route_table_id_by_tag("lab-tgw-spoke-rt")
+inspection_vpc_id = get_vpc_id_by_tag("lab-inspection")
+inspection_attachment_id = next(
+    (a["attachment_id"] for a in tgw_attachments if a["resource_id"] == inspection_vpc_id), None
+)
+
+if spoke_rt_id and inspection_attachment_id:
+    issues = verify_inspection_redirect(spoke_rt_id, inspection_attachment_id)
+    if issues:
+        print("\n⚠ INSPECTION REDIRECT ISSUES:")
+        for i in issues:
+            print(f"  {i}")
     else:
-        print("\nTGW route table OK: every associated attachment is propagating.")
+        print("\nInspection redirect OK: both spoke CIDRs route via inspection.")
+else:
+    print("\nCould not verify inspection redirect — missing route table or attachment.")
+
+open_sgs = find_open_security_groups()
+if open_sgs:
+    print("\n⚠ OPEN SECURITY GROUP RULES FOUND:")
+    for sg in open_sgs:
+        print(f"  {sg['group_id']} ({sg['group_name']}) - port {sg['port']} open to 0.0.0.0/0")
+else:
+    print("\nNo open security group rules found.")
