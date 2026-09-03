@@ -37,3 +37,7 @@ output "tgw_attachment_b_id" {
 output "tgw_route_table_id" {
   value = aws_ec2_transit_gateway_route_table.main.id
 }
+
+output "vpc_inspection_id" { value = module.vpc_inspection.vpc_id }
+output "tgw_attachment_inspection_id" { value = aws_ec2_transit_gateway_vpc_attachment.inspection.id }
+output "tgw_route_table_inspection_id" { value = aws_ec2_transit_gateway_route_table.inspection.id }
