@@ -2,6 +2,14 @@
 
 Two-VPC network built with Terraform, provisioned through HCP Terraform's VCS-driven workflow (GitHub-triggered plan/apply, no local Terraform CLI required). Includes a Python/boto3 script that independently inventories the live AWS environment, cross-checks it against what the code declares, and verifies Transit Gateway routing integrity.
 
+## Tech stack
+
+- **Terraform** — infrastructure as code, modules, remote state
+- **HCP Terraform** — VCS-driven plan/apply, no local CLI required
+- **AWS** — VPC, Transit Gateway, Internet Gateway, Route Tables, IAM
+- **Python + boto3** — independent AWS state auditing and reporting
+- **Git / GitHub** — branch + pull request workflow, code review before merge
+
 ## Architecture
 
 ```mermaid
@@ -47,6 +55,32 @@ By default, every TGW attachment auto-associates and auto-propagates into AWS's 
 - 1 Transit Gateway with redundant multi-AZ VPC attachments, plus an explicit TGW route table with per-attachment association and propagation
 - Infrastructure fully defined in Terraform, applied through HCP Terraform's VCS-driven workflow — every change is a GitHub commit reviewed via pull request before merge
 - `automation/network_inventory.py` — a boto3 script that independently queries live AWS state (VPCs, subnets, route tables, TGW attachments), exports to JSON/CSV, flags blackhole routes, and flags any TGW attachment that's associated but not propagating
+
+## Example output
+
+Terminal output from a real run against the live environment:
+
+\`\`\`
+TGW Attachments:
+  tgw-attach-097ced1cd8c4eb1d1 -> vpc-0b327387db9b47875 [available]
+  tgw-attach-0ef21bb17b1e767f0 -> vpc-07c6aed5491633a67 [available]
+
+TGW route table OK: every associated attachment is propagating.
+\`\`\`
+
+A trimmed excerpt of `network_inventory.json`:
+
+\`\`\`json
+{
+  "vpc_id": "vpc-0b327387db9b47875",
+  "subnets": [
+    { "subnet_id": "subnet-0fcfdf59828e0d522", "cidr": "10.0.1.0/24" }
+  ],
+  "routes": [
+    { "route_table_id": "rtb-0c30a0d62ed9f196f", "destination": "10.1.0.0/16", "target": "tgw-0715372b9e7a72896", "state": "active" }
+  ]
+}
+\`\`\`
 
 ## Deployment flow
 
