@@ -127,7 +127,7 @@ if blackhole_routes:
 else:
     print("\nNo blackhole routes found — all routes active.")
 
-tgw_route_table_id = "tgw-rtb-00fb7dad63ca9abad"  # from your outputs
+tgw_route_table_id = "tgw-rtb-0a28217794d121d49"  # from your outputs
 
 tgw_attachments = list_tgw_attachments()
 print("\nTGW Attachments:")
