@@ -60,17 +60,15 @@ By default, every TGW attachment auto-associates and auto-propagates into AWS's 
 
 Terminal output from a real run against the live environment:
 
-\`\`\`
 TGW Attachments:
   tgw-attach-097ced1cd8c4eb1d1 -> vpc-0b327387db9b47875 [available]
   tgw-attach-0ef21bb17b1e767f0 -> vpc-07c6aed5491633a67 [available]
 
 TGW route table OK: every associated attachment is propagating.
-\`\`\`
 
 A trimmed excerpt of `network_inventory.json`:
 
-\`\`\`json
+```json
 {
   "vpc_id": "vpc-0b327387db9b47875",
   "subnets": [
@@ -80,7 +78,7 @@ A trimmed excerpt of `network_inventory.json`:
     { "route_table_id": "rtb-0c30a0d62ed9f196f", "destination": "10.1.0.0/16", "target": "tgw-0715372b9e7a72896", "state": "active" }
   ]
 }
-\`\`\`
+```
 
 ## Deployment flow
 
