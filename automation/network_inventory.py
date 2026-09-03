@@ -32,6 +32,20 @@ def list_route_tables_for_vpc(vpc_id):
         print(f"Error: {e}")
         return []
 
+def get_tgw_route_table_id():
+    try:
+        response = ec2.describe_transit_gateway_route_tables(
+            Filters=[{"Name": "tag:Name", "Values": ["lab-tgw-rt"]}]
+        )
+        tables = response["TransitGatewayRouteTables"]
+        if not tables:
+            print("Error: no TGW route table found with tag Name=lab-tgw-rt")
+            return None
+        return tables[0]["TransitGatewayRouteTableId"]
+    except Exception as e:
+        print(f"Error: {e}")
+        return None
+
 def get_tgw_route_table_propagations(route_table_id):
     try:
         response = ec2.get_transit_gateway_route_table_propagations(
@@ -127,8 +141,15 @@ if blackhole_routes:
 else:
     print("\nNo blackhole routes found — all routes active.")
 
-tgw_route_table_id = "tgw-rtb-0a28217794d121d49"  # from your outputs
+tgw_route_table_id = get_tgw_route_table_id()
 
+if tgw_route_table_id:
+    gaps = check_tgw_propagation_gaps(tgw_route_table_id)
+    if gaps:
+        print(f"\n⚠ TGW ROUTE TABLE GAP: attachments associated but not propagating: {gaps}")
+    else:
+        print("\nTGW route table OK: every associated attachment is propagating.")
+        
 tgw_attachments = list_tgw_attachments()
 print("\nTGW Attachments:")
 for att in tgw_attachments:
