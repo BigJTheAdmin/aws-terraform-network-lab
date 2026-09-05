@@ -24,20 +24,28 @@ graph TB
         B_priv["Private subnets x2 AZs"]
     end
 
+    subgraph VPCI["Inspection VPC — 10.2.0.0/16 (via module)"]
+        I_priv["Private subnets x2 AZs, no public/IGW"]
+    end
+
     IGW_A["Internet Gateway A"]
     IGW_B["Internet Gateway B"]
-    TGWRT["TGW route table (explicit)"]
     TGW["Transit Gateway"]
+    SpokeRT["Spoke route table<br/>(A + B associated)"]
+    InspRT["Inspection route table<br/>(Inspection associated)"]
     Internet(["Internet"])
 
     A_pub --> IGW_A --> Internet
     B_pub --> IGW_B --> Internet
     A_priv --> TGW
     B_priv --> TGW
-    TGW --> TGWRT
+    I_priv --> TGW
+    TGW --> SpokeRT
+    TGW --> InspRT
+    SpokeRT -. "redirects A<->B traffic via static routes" .-> InspRT
 ```
 
-Each VPC is built from a single reusable `modules/vpc` module (name/CIDR/subnet inputs), spans two Availability Zones for redundancy, and has a public subnet (routed to the internet via its own IGW) and a private subnet (routed to the *other* VPC via a shared Transit Gateway).
+Each workload VPC (A, B) is built from the reusable `modules/vpc` module, spans two Availability Zones, and has a public subnet (routed to the internet via its own IGW) and a private subnet (routed via Transit Gateway). The Inspection VPC has no public subnet — it never talks to the internet directly. Two separate TGW route tables enforce that all inter-VPC traffic passes through inspection rather than routing directly between A and B — see "Milestone 2" below for the mechanism.
 
 ## Why Transit Gateway instead of VPC Peering
 
