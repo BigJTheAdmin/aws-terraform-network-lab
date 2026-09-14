@@ -26,7 +26,16 @@ resource "aws_ec2_transit_gateway_vpc_attachment" "vpc_b" {
   }
 }
 
+resource "aws_route" "a_to_b" {
+  route_table_id         = module.vpc_a.private_route_table_id
+  destination_cidr_block = var.vpcs["vpc_b"]
+  transit_gateway_id     = aws_ec2_transit_gateway.main.id
 
+  depends_on = [
+    aws_ec2_transit_gateway_vpc_attachment.vpc_a,
+    aws_ec2_transit_gateway_vpc_attachment.vpc_b
+  ]
+}
 
 resource "aws_route" "b_to_a" {
   route_table_id         = module.vpc_b.private_route_table_id
